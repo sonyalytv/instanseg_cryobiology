@@ -16,9 +16,9 @@ class InstanSeg():
     Main class for running InstanSeg.
     """
     def __init__(self, 
-                 model_type: Union[str,nn.Module] = "brightfield_nuclei", 
+                 model_type: Union[str,nn.Module] = "fluorescence_nuclei_and_cells", 
                  device: Optional[str] = None, 
-                 image_reader: str = "tiffslide",
+                 image_reader: str = "skimage.io",
                  verbosity: int = 1 #0,1,2
                  ):
         
@@ -301,9 +301,9 @@ class InstanSeg():
                          pixel_size: Optional[float] = None,
                          normalise: bool = True,
                          return_image_tensor: bool = True,
-                         target: str = "all_outputs", #or "nuclei" or "cells"
+                         target: str = "cells", #or "nuclei" or "cells" or "all_outputs"
                          rescale_output: bool = True,
-                         **kwargs) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+                         **kwargs) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], int]:
         """
         Evaluate a small input image using the InstanSeg model.
         
@@ -315,7 +315,7 @@ class InstanSeg():
         :param rescale_output: Controls whether the outputs should be rescaled to the same coordinate space as the input (useful if the pixel size is different to that of the InstanSeg model being used).
         :param kwargs: Passed to pytorch.
         
-        :return: A tensor corresponding to the output targets specified, as well as the input image if requested.
+        :return: A tensor corresponding to the output targets specified, as well as the input image if requested, and number of cells detected.
         """
         from instanseg.utils.utils import percentile_normalize, _filter_kwargs
 
@@ -352,7 +352,7 @@ class InstanSeg():
 
         with torch.amp.autocast('cuda'):
             instanseg_kwargs = _filter_kwargs(self.instanseg, kwargs)
-            instances = self.instanseg(image,target_segmentation = target_segmentation, **instanseg_kwargs)
+            instances = self.instanseg(image, target_segmentation = target_segmentation, **instanseg_kwargs)
 
         if pixel_size is not None and img_has_been_rescaled and rescale_output:  
             instances = interpolate(instances, size=original_shape[-2:], mode="nearest")
@@ -360,10 +360,14 @@ class InstanSeg():
             if return_image_tensor:
                 image = interpolate(image, size=original_shape[-2:], mode="bilinear")
 
+        number_of_cells = 0
+        for inst in instances.flatten():
+            number_of_cells = max(int(inst), number_of_cells)
+
         if return_image_tensor:
-            return instances.cpu(), image.cpu()
+            return instances.cpu(), image.cpu(), number_of_cells
         else:
-            return instances.cpu()
+            return instances.cpu(), number_of_cells
 
     def eval_medium_image(self,
                           image: torch.Tensor, 
