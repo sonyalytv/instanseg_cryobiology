@@ -303,7 +303,7 @@ class InstanSeg():
                          return_image_tensor: bool = True,
                          target: str = "cells", #or "nuclei" or "cells" or "all_outputs"
                          rescale_output: bool = True,
-                         **kwargs) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], int]:
+                         **kwargs) -> Union[Tuple[torch.Tensor, int], Tuple[torch.Tensor, torch.Tensor, int]]:
         """
         Evaluate a small input image using the InstanSeg model.
         
@@ -360,9 +360,7 @@ class InstanSeg():
             if return_image_tensor:
                 image = interpolate(image, size=original_shape[-2:], mode="bilinear")
 
-        number_of_cells = 0
-        for inst in instances.flatten():
-            number_of_cells = max(int(inst), number_of_cells)
+        number_of_cells = len(torch.unique(instances)) - 1
 
         if return_image_tensor:
             return instances.cpu(), image.cpu(), number_of_cells
