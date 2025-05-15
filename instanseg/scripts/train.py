@@ -75,14 +75,14 @@ def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name=
 
     train_losses = []
     test_losses = []
-
     best_f1_score = -1
     f1_list = []
     f1_list_cells = []
+    cnt_no_improvement = 0
 
     for epoch in range(num_epochs):
 
-        print("Epoch:", epoch)
+        # print("Epoch:", epoch)
 
         train_loss, train_time = train_epoch(model, device, train_loader, loss_fn, optimizer, args = args)
 
@@ -104,8 +104,8 @@ def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name=
         train_losses.append(train_loss)
         test_losses.append(test_loss)
 
-        if epoch % 10 ==0 and args.optimize_hyperparameters:
-            best_params = optimize_hyperparameters(model,postprocessing_fn = method.postprocessing,data_loader= test_loader,verbose = not args.on_cluster, show_progressbar = not args.on_cluster)
+        if epoch % 10 == 0 and args.optimize_hyperparameters:
+            best_params = optimize_hyperparameters(model, postprocessing_fn = method.postprocessing, data_loader= test_loader, verbose = not args.on_cluster, show_progressbar = not args.on_cluster)
             method.update_hyperparameters(best_params)
 
 
@@ -129,21 +129,32 @@ def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name=
             dict_to_print["lr:"] = optimizer.param_groups[0]["lr"]
             scheduler.step()
 
-                
+        torch.save({
+            'f1_score': float(best_f1_score),
+            'epoch': int(epoch),
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, args.output_path / "model_weights_last.pth") 
+
         if f1_score > best_f1_score or save_epoch_outputs:
             best_f1_score = np.maximum(f1_score, best_f1_score)
 
-            print("Saving model, best f1_score:", best_f1_score)
+            # print("Saving model, best f1_score:", best_f1_score)
 
             torch.save({
                 'f1_score': float(best_f1_score),
                 'epoch': int(epoch),
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-            }, args.output_path / "model_weights.pth") 
+            }, args.output_path / "model_weights_best.pth") 
+        else:
+            cnt_no_improvement += 1
+            if (cnt_no_improvement > 10):
+                print("Early stopping!")
+                print("#epoch: ", epoch)
+                break
 
-
-        print(str(dict_to_print).replace("{", "").replace("}", "").replace("'", ""))
+        # print(str(dict_to_print).replace("{", "").replace("}", "").replace("'", ""))
 
     return model, train_losses, test_losses, f1_list, f1_list_cells
 
@@ -170,7 +181,7 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
         os.mkdir(args.output_path)
 
     args.output_path = Path(args.output_path) / args.experiment_str
-    print("Saving results to {}".format(os.path.abspath(args.output_path)))
+    # print("Saving results to {}".format(os.path.abspath(args.output_path)))
     if not os.path.exists(args.output_path):
         os.mkdir(args.output_path)
 
@@ -179,16 +190,16 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
 
     # Seed as many rngs as we can
     if args.rng_seed:
-        print(f'Setting RNG seed to {args.rng_seed}')
+        # print(f'Setting RNG seed to {args.rng_seed}')
         torch.manual_seed(args.rng_seed)
         np.random.seed(args.rng_seed)
         import random
         random.seed(args.rng_seed)
     else:
-        print('RNG seed not set')
+        # print('RNG seed not set')
 
     if args.use_deterministic:
-        print('Setting use_deterministic_algorithms=True')
+        # print('Setting use_deterministic_algorithms=True')
         torch.use_deterministic_algorithms(True)
 
 
@@ -212,7 +223,6 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
     if args.loss_function == "instanseg_loss":
         from instanseg.utils.loss.instanseg_loss import InstanSeg
 
-
         method = InstanSeg(binary_loss_fn_str=args.binary_loss_fn, 
                         seed_loss_fn = args.seed_loss_fn, 
                         device = device,
@@ -228,7 +238,6 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
             return method.forward(*args, **kwargs)
         
         dim_out = method.dim_out
-
     else:
         raise NotImplementedError("Loss function not recognized", args.loss_function)
 
@@ -266,7 +275,7 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
             optimizer.load_state_dict(model_dict['optimizer_state_dict'])
             optimizer.param_groups[0]['lr'] = args.lr  # you may want to remove this line in the future
 
-        print("Resuming training from epoch", model_dict['epoch'])
+        # print("Resuming training from epoch", model_dict['epoch'])
 
     else:
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -298,7 +307,7 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
     train_loader, test_loader = get_loaders(train_images, train_labels, val_images, val_labels, train_meta, val_meta, args)
     
     if torch.cuda.device_count() > 1:
-        print("Using", torch.cuda.device_count(), "GPUs!")
+        # print("Using", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
 
     model.to(device)
@@ -317,12 +326,12 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
 
     if args.hotstart_training > 0:
         hot_epochs = args.hotstart_training
-        print("Hotstart for "+str(hot_epochs)+" epochs with binary_xloss and dice_loss")
+        # print("Hotstart for "+str(hot_epochs)+" epochs with binary_xloss and dice_loss")
         method.update_seed_loss("binary_xloss")
         method.update_binary_loss("dice_loss")
         model, train_losses, test_losses, f1_list, f1_list_cells = main(model, loss_fn, train_loader, test_loader, num_epochs=hot_epochs, epoch_name='hotstart_epoch')
 
-        print("Starting main training loop with",args.seed_loss_fn, "and", args.binary_loss_fn)
+        # print("Starting main training loop with",args.seed_loss_fn, "and", args.binary_loss_fn)
         method.update_seed_loss(args.seed_loss_fn)
         method.update_binary_loss(args.binary_loss_fn)
 
