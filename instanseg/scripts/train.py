@@ -195,7 +195,7 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
         np.random.seed(args.rng_seed)
         import random
         random.seed(args.rng_seed)
-    else:
+    # else:
         # print('RNG seed not set')
 
     if args.use_deterministic:
