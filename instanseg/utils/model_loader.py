@@ -98,7 +98,7 @@ def read_model_args_from_csv(path=r"../results/", folder=""):
 
 def build_model_from_dict(build_model_dictionary):
     # if build_model_dictionary["dim_in"] == 0 or build_model_dictionary["dim_in"] is None:
-        dim_in = 3  # Channel invariance currently outputs a 3 channel image
+    dim_in = 3  # Channel invariance currently outputs a 3 channel image
     # else:
         # dim_in = build_model_dictionary["dim_in"]
 
