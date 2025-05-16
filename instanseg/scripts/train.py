@@ -69,7 +69,7 @@ parser.add_argument('-rng_seed', '--rng_seed', default=None, type=int, help = "O
 parser.add_argument('-use_deterministic', '--use_deterministic', default=False, type=lambda x: (str(x).lower() == 'true'), help = "Whether to use deterministic algorithms (default=False)")
 parser.add_argument('-tile', '--tile_size', default=256, type=int, help = "Tile sizes for the input images")
 
-def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name='output_epoch'):
+def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name='output_epoch', max_no_improvement=10):
     from instanseg.utils.AI_utils import optimize_hyperparameters, train_epoch, test_epoch
     global best_f1_score, device, method, iou_threshold, args, optimizer, scheduler
 
@@ -104,7 +104,7 @@ def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name=
         train_losses.append(train_loss)
         test_losses.append(test_loss)
 
-        if epoch % 10 == 0 and args.optimize_hyperparameters:
+        if epoch % 5 == 0 and args.optimize_hyperparameters:
             best_params = optimize_hyperparameters(model, postprocessing_fn = method.postprocessing, data_loader= test_loader, verbose = not args.on_cluster, show_progressbar = not args.on_cluster)
             method.update_hyperparameters(best_params)
 
@@ -149,7 +149,7 @@ def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name=
             }, args.output_path / "model_weights_best.pth") 
         else:
             cnt_no_improvement += 1
-            if (cnt_no_improvement > 10):
+            if (cnt_no_improvement >= max_no_improvement):
                 print("Early stopping!")
                 print("#epoch: ", epoch)
                 break

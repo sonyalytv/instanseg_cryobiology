@@ -21,6 +21,10 @@ def _robust_average_precision(labels, predicted, threshold):
             predicted[i][labels[i] < 0] = 0 
 
     if labels[0].shape[0] != 2: #cells or nuclei
+        labels_renumbered, remapping = fastremap.renumber(labels, in_place=True)
+        labels = fastremap.refit(labels_renumbered)
+        predicted_renumbered, remapping = fastremap.renumber(predicted, in_place=True)
+        predicted = fastremap.refit(predicted_renumbered)
         labels = [labels[i].detach().cpu().numpy().astype(np.int32) for i, l in enumerate(labels) if labels[i].min() >= 0 and labels[i].max() > 0]
         predicted = [predicted[i].detach().cpu().numpy().astype(np.int32) for i, l in enumerate(labels) if labels[i].min() >= 0 and labels[i].max() > 0]
 
@@ -32,6 +36,7 @@ def _robust_average_precision(labels, predicted, threshold):
         f1i = [stat.f1 for stat in stats]
         return _robust_f1_mean_calculator(f1i)
     else:
+        print("Alert! in calculating metrics")
         f1is = [] 
         for i, _ in enumerate(["nuclei", "cells"]):
             labels_tmp = [fastremap.renumber(labels[j][i].detach().cpu().numpy())[0].astype(np.int32) for j, l in enumerate(labels) if labels[j][i].min() >= 0 and labels[j][i].max() > 0]
@@ -55,7 +60,7 @@ def _robust_average_precision(labels, predicted, threshold):
 import pandas as pd
 from tqdm import tqdm
 def compute_and_export_metrics(gt_masks, pred_masks, output_path, target, return_metrics = False, show_progress = False, verbose = True):
-    taus = [ 0.5, 0.6, 0.7, 0.8, 0.9]
+    taus = [0.5, 0.6, 0.7, 0.8, 0.9]
     stats = [matching.matching_dataset(gt_masks, pred_masks, thresh=t, show_progress=False, by_image = False) for t in tqdm(taus, disable=not show_progress)]
     df_list = []
 
