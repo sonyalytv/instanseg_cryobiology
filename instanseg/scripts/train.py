@@ -139,7 +139,7 @@ def main(model, loss_fn, train_loader, test_loader, num_epochs=1000, epoch_name=
 
         if f1_score > best_f1_score or save_epoch_outputs:
             best_f1_score = np.maximum(f1_score, best_f1_score)
-
+            cnt_no_improvement = 0
             # print("Saving model, best f1_score:", best_f1_score)
 
             torch.save({
