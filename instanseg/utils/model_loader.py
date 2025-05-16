@@ -174,7 +174,7 @@ def load_model_weights(model, device, folder, path=r"../models/", dict = None):
     from pathlib import Path
     model_path = Path(path) / folder
     if torch.cuda.is_available():
-        model_dict = torch.load(model_path / "model_weights.pth", weights_only= False)
+        model_dict = torch.load(model_path / "model_weights_best.pth", weights_only= False)
     else:
         if device is None:
             if torch.backends.mps.is_available():
@@ -183,7 +183,7 @@ def load_model_weights(model, device, folder, path=r"../models/", dict = None):
             else:
                 device = 'cpu'
                 print('CUDA not available - attempting to load CPU model')
-        model_dict = torch.load(model_path / "model_weights.pth", map_location=device)
+        model_dict = torch.load(model_path / "model_weights_best.pth", map_location=device)
 
     model_dict['model_state_dict'] = remove_module_prefix_from_dict(model_dict['model_state_dict'])
 
