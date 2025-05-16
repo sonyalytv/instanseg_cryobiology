@@ -21,12 +21,12 @@ def _robust_average_precision(labels, predicted, threshold):
             predicted[i][labels[i] < 0] = 0 
 
     if labels[0].shape[0] != 2: #cells or nuclei
-        labels = [labels[i].detach().cpu().numpy().astype(np.int32) for i, l in enumerate(labels) if labels[i].min() >= 0 and labels[i].max() > 0]
-        labels_renumbered, remapping = fastremap.renumber(labels, in_place=True)
+        labels_renumbered, remapping = fastremap.renumber(np.array(labels), in_place=True)
         labels = fastremap.refit(labels_renumbered)
-        predicted = [predicted[i].detach().cpu().numpy().astype(np.int32) for i, l in enumerate(labels) if labels[i].min() >= 0 and labels[i].max() > 0]
-        predicted_renumbered, remapping = fastremap.renumber(predicted, in_place=True)
+        labels = [labels[i].detach().cpu().numpy().astype(np.int32) for i, l in enumerate(labels) if labels[i].min() >= 0 and labels[i].max() > 0]
+        predicted_renumbered, remapping = fastremap.renumber(np.array(predicted), in_place=True)
         predicted = fastremap.refit(predicted_renumbered)
+        predicted = [predicted[i].detach().cpu().numpy().astype(np.int32) for i, l in enumerate(labels) if labels[i].min() >= 0 and labels[i].max() > 0]
 
         if len(labels)==0:
             return np.nan
