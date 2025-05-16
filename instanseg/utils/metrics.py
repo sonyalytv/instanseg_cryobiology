@@ -69,6 +69,7 @@ def compute_and_export_metrics(gt_masks, pred_masks, output_path, target, return
     df = pd.concat(df_list, ignore_index=True)
 
     mean_f1 = df[["thresh", "f1"]].iloc[:].mean()["f1"]
+    best_f1 = df[["thresh", "f1"]].iloc[:].max()["f1"]
     mean_panoptic_quality = df[["thresh", "panoptic_quality"]].iloc[:].mean()["panoptic_quality"]
     panoptic_quality_05 = df[["thresh", "panoptic_quality"]].iloc[0]["panoptic_quality"]
     f1_05 = df[["thresh", "f1"]].iloc[0]["f1"]
@@ -82,6 +83,7 @@ def compute_and_export_metrics(gt_masks, pred_masks, output_path, target, return
     if verbose:
         print("Target:",target)
         print("Mean f1 score: ", mean_f1)
+        print("Best f1 score: ", best_f1)
         print("f1 score at 0.5: ", f1_05)
         print("SQ: ", panoptic_quality_05 / f1_05)
 
