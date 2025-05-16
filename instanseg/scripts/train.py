@@ -15,6 +15,7 @@ import pdb
 parser = argparse.ArgumentParser()
 
 #basic usage
+parser.add_argument("-max_no_improvement", "--max_no_improvement", type=int, default=10, help="Sets the maximum number of no improvement epochs")
 parser.add_argument("-d_p", "--data_path", type=str, default=r"../datasets", help="Path to the .pth file")
 parser.add_argument("-data", "--dataset", type=str, default="segmentation", help="Name of the dataset to load")
 parser.add_argument('-source', '--source_dataset', default="all", type=str, help = "Which datasets to use for training. Input is 'all' or a list of datasets (e.g. [TNBC_2018,LyNSeC,IHC_TMA,CoNSeP])")
