@@ -27,10 +27,11 @@ parser.add_argument('-window', '--window_size', default=128, type=int)
 parser.add_argument('-set', '--test_set', default="Validation", type=str, help = "Validation or Test or Train")
 parser.add_argument('-export_to_torchscript', '--export_to_torchscript', default=False,type=lambda x: (str(x).lower() == 'true'))
 parser.add_argument('-export_to_bioimageio', '--export_to_bioimageio', default=False,type=lambda x: (str(x).lower() == 'true'))
+parser.add_argument("-cpu_and_ram", "--cpu_and_ram", type=bool, default=False)
 
 #@timer
 def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device, parser_args, output_path, params=None,
-                        instanseg=None, tta=False):
+                        instanseg=None, tta=False, cpu_and_ram=False):
     
     if tta:
         import ttach as tta
@@ -92,9 +93,6 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 with torch.amp.autocast("cuda"):
                     pred = model(imgs[None,])
 
-                ram_model = process.memory_info().rss / 1024**2
-                cpu_model = psutil.cpu_percent(interval=1)
-
                 pred = _recover_padding(pred, pad).squeeze(0)
                 imgs = _recover_padding(imgs, pad).squeeze(0)
                 if torch.cuda.is_available():
@@ -103,7 +101,12 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 model_time = time.time() - start
                 time_dict["model"] += model_time
 
-                
+                if cpu_and_ram:
+                    ram_model = process.memory_info().rss / 1024**2
+                    cpu_model = psutil.cpu_percent(interval=1)
+                else:
+                    ram_model = 0
+                    cpu_model = 0
 
                 start = time.time()
 
@@ -340,7 +343,8 @@ if __name__ == "__main__":
                                                           output_path=output_path,
                                                           params=params,
                                                           instanseg=instanseg,
-                                                          tta=parser_args.tta)
+                                                          tta=parser_args.tta,
+                                                          cpu_and_ram=parser_args.cpu_and_ram)
 
     pd.DataFrame(time_dict['combined']).to_csv(output_path / "timing_dict.csv", header=True)
 
