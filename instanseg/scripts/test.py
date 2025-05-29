@@ -6,6 +6,7 @@ from pathlib import Path
 import argparse
 import fastremap
 import time
+import psutil
 import numpy as np
 
 parser = argparse.ArgumentParser()
@@ -26,7 +27,6 @@ parser.add_argument('-window', '--window_size', default=128, type=int)
 parser.add_argument('-set', '--test_set', default="Validation", type=str, help = "Validation or Test or Train")
 parser.add_argument('-export_to_torchscript', '--export_to_torchscript', default=False,type=lambda x: (str(x).lower() == 'true'))
 parser.add_argument('-export_to_bioimageio', '--export_to_bioimageio', default=False,type=lambda x: (str(x).lower() == 'true'))
-
 
 #@timer
 def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device, parser_args, output_path, params=None,
@@ -77,6 +77,7 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
         for imgs, masks in tqdm(zip(val_images, val_labels), total=len(val_images)):
 
             torch.cuda.synchronize()
+            process = psutil.Process(os.getpid())
             start = time.time()
             imgs, masks = Augmenter.to_tensor(imgs, masks, normalize=False)
             imgs = imgs.to(device)
@@ -97,6 +98,9 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 model_time = time.time() - start
                 time_dict["model"] += model_time
 
+                cpu_model = process.cpu_percent(interval=0.1)
+                ram_model = process.memory_info().rss / 1024**2
+
                 start = time.time()
 
                 if params is not None:
@@ -109,10 +113,9 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 torch.cuda.synchronize()
 
                 postprocessing_time = time.time() - start
-
                 time_dict["postprocessing"] += postprocessing_time
 
-                time_dict["combined"].append({"time": model_time + postprocessing_time, "dimension": imgs.shape,
+                time_dict["combined"].append({"time": model_time + postprocessing_time, "cpu": cpu_model, "ram": ram_model, "dimension": imgs.shape,
                                               "num_instances": len(torch.unique(lab) - 1)})
 
             else:

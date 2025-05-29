@@ -60,7 +60,7 @@ def _robust_average_precision(labels, predicted, threshold):
 import pandas as pd
 from tqdm import tqdm
 def compute_and_export_metrics(gt_masks, pred_masks, output_path, target, return_metrics = False, show_progress = False, verbose = True):
-    taus = [0.5, 0.6, 0.7, 0.8, 0.9]
+    taus = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
     stats = [matching.matching_dataset(gt_masks, pred_masks, thresh=t, show_progress=False, by_image = False) for t in tqdm(taus, disable=not show_progress)]
     df_list = []
 
