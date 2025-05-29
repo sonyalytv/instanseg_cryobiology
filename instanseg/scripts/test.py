@@ -75,15 +75,16 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
 
     with torch.no_grad():
         for imgs, masks in tqdm(zip(val_images, val_labels), total=len(val_images)):
-
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             process = psutil.Process(os.getpid())
             start = time.time()
             imgs, masks = Augmenter.to_tensor(imgs, masks, normalize=False)
             imgs = imgs.to(device)
             imgs, _ = Augmenter.normalize(imgs)
             time_dict["preprocessing"] += time.time() - start
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             start = time.time()
 
             if not tta:
@@ -93,7 +94,8 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
 
                 pred = _recover_padding(pred, pad).squeeze(0)
                 imgs = _recover_padding(imgs, pad).squeeze(0)
-                torch.cuda.synchronize()
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
 
                 model_time = time.time() - start
                 time_dict["model"] += model_time
@@ -110,7 +112,8 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                     with torch.amp.autocast("cuda"):
                         lab = postprocessing_fn(pred, img=imgs, window_size=parser_args.window_size)
 
-                torch.cuda.synchronize()
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
 
                 postprocessing_time = time.time() - start
                 time_dict["postprocessing"] += postprocessing_time
