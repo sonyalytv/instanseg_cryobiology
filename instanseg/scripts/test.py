@@ -92,6 +92,8 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 with torch.amp.autocast("cuda"):
                     pred = model(imgs[None,])
 
+                cpu_model = psutil.cpu_percent(interval=1)
+
                 pred = _recover_padding(pred, pad).squeeze(0)
                 imgs = _recover_padding(imgs, pad).squeeze(0)
                 if torch.cuda.is_available():
@@ -100,7 +102,7 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 model_time = time.time() - start
                 time_dict["model"] += model_time
 
-                cpu_model = psutil.cpu_percent(interval=1)
+                
                 ram_model = process.memory_info().rss / 1024**2
 
                 start = time.time()
