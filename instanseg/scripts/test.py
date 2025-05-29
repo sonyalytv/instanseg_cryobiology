@@ -78,7 +78,8 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
         for imgs, masks in tqdm(zip(val_images, val_labels), total=len(val_images)):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
-            process = psutil.Process(os.getpid())
+            if cpu_and_ram=True:
+                process = psutil.Process(os.getpid())
             start = time.time()
             imgs, masks = Augmenter.to_tensor(imgs, masks, normalize=False)
             imgs = imgs.to(device)
