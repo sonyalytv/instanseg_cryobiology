@@ -276,7 +276,7 @@ def instanseg_training(segmentation_dataset: Dict = None, **kwargs):
             optimizer.load_state_dict(model_dict['optimizer_state_dict'])
             optimizer.param_groups[0]['lr'] = args.lr  # you may want to remove this line in the future
 
-        # print("Resuming training from epoch", model_dict['epoch'])
+        print("Resuming training from epoch", model_dict['epoch'])
 
     else:
         optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
