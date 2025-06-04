@@ -133,7 +133,7 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                     cpu_postprocessing = 0
 
                 time_dict["combined"].append({"time": model_time + postprocessing_time, "cpu_model": cpu_model, "cpu_post": cpu_postprocessing,
-                                              "ram_model": ram_model, "ram_post": ram_postprocessing, dimension": imgs.shape,
+                                              "ram_model": ram_model, "ram_post": ram_postprocessing, "dimension": imgs.shape,
                                               "num_instances": len(torch.unique(lab) - 1)})
 
             else:
