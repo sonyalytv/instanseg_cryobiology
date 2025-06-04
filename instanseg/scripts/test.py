@@ -78,8 +78,6 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
         for imgs, masks in tqdm(zip(val_images, val_labels), total=len(val_images)):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
-            if cpu_and_ram == True:
-                process = psutil.Process(os.getpid())
             start = time.time()
             imgs, masks = Augmenter.to_tensor(imgs, masks, normalize=False)
             imgs = imgs.to(device)
@@ -88,7 +86,9 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             start = time.time()
-
+            if cpu_and_ram == True:
+                process = psutil.Process(os.getpid())
+                
             if not tta:
                 imgs, pad = _instanseg_padding(imgs, extra_pad=0, min_dim=32, ensure_square=False)
                 with torch.amp.autocast("cuda"):
@@ -104,12 +104,14 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
 
                 if cpu_and_ram == True:
                     ram_model = process.memory_info().rss / 1024**2
-                    cpu_model = psutil.cpu_percent(interval=1)
+                    cpu_model = process.cpu_percent(interval=1)
                 else:
                     ram_model = 0
                     cpu_model = 0
 
                 start = time.time()
+                if cpu_and_ram == True:
+                    process = psutil.Process(os.getpid())
 
                 if params is not None:
                     with torch.amp.autocast("cuda"):
@@ -123,8 +125,15 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
 
                 postprocessing_time = time.time() - start
                 time_dict["postprocessing"] += postprocessing_time
+                if cpu_and_ram == True:
+                    ram_postprocessing = process.memory_info().rss / 1024**2
+                    cpu_postprocessing = process.cpu_percent(interval=1)
+                else:
+                    ram_postprocessing = 0
+                    cpu_postprocessing = 0
 
-                time_dict["combined"].append({"time": model_time + postprocessing_time, "cpu": cpu_model, "ram": ram_model, "dimension": imgs.shape,
+                time_dict["combined"].append({"time": model_time + postprocessing_time, "cpu_model": cpu_model, "cpu_post": cpu_postprocessing,
+                                              "ram_model": ram_model, "ram_post": ram_postprocessing, dimension": imgs.shape,
                                               "num_instances": len(torch.unique(lab) - 1)})
 
             else:
