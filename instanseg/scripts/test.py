@@ -164,7 +164,7 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 import tifffile
                 mask_dir = output_path / "masks"
                 mask_dir.mkdir(parents=True, exist_ok=True)
-                pred_out = lab.astype(np.uint16)
+                pred_out = lab.squeeze().astype(np.uint16)
                 tifffile.imwrite(mask_dir / f"pred_mask_{count}.tiff", pred_out)
 
             if parser_args.save_ims:
