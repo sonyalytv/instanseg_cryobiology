@@ -28,6 +28,7 @@ parser.add_argument('-set', '--test_set', default="Validation", type=str, help =
 parser.add_argument('-export_to_torchscript', '--export_to_torchscript', default=False,type=lambda x: (str(x).lower() == 'true'))
 parser.add_argument('-export_to_bioimageio', '--export_to_bioimageio', default=False,type=lambda x: (str(x).lower() == 'true'))
 parser.add_argument("-cpu_and_ram", "--cpu_and_ram", type=bool, default=False)
+parser.add_argument("-save_masks", "--save_masks", default=False, type=lambda x: (str(x).lower() == 'true'), help="Save prediction masks as TIFFs")
 
 #@timer
 def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device, parser_args, output_path, params=None,
@@ -158,6 +159,13 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
 
             pred_masks.append(lab.astype(np.int16))
             gt_masks.append(masks.astype(np.int16))
+
+            if parser_args.save_masks:
+                import tifffile
+                mask_dir = output_path / "masks"
+                mask_dir.mkdir(parents=True, exist_ok=True)
+                pred_out = lab.astype(np.uint16)
+                tifffile.imwrite(mask_dir / f"pred_mask_{count}.tiff", pred_out)
 
             if parser_args.save_ims:
                 from instanseg.utils.augmentations import Augmentations
