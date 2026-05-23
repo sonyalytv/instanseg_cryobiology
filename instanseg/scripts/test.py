@@ -31,7 +31,7 @@ parser.add_argument("-cpu_and_ram", "--cpu_and_ram", type=bool, default=False)
 parser.add_argument("-save_masks", "--save_masks", default=False, type=lambda x: (str(x).lower() == 'true'), help="Save prediction masks as TIFFs")
 
 #@timer
-def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device, parser_args, output_path, params=None,
+def instanseg_inference(val_images, val_labels, val_meta, model, postprocessing_fn, device, parser_args, output_path, params=None,
                         instanseg=None, tta=False, cpu_and_ram=False):
     
     if tta:
@@ -76,7 +76,14 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
             lab = method.TTA_postprocessing(imgs[None,], model, transforms, device=device)
 
     with torch.no_grad():
-        for imgs, masks in tqdm(zip(val_images, val_labels), total=len(val_images)):
+        for imgs, masks, meta in tqdm(zip(val_images, val_labels, val_meta), total=len(val_images)):
+            if 'file_name' in meta:
+                base_name = Path(meta['file_name']).stem
+            elif 'image_name' in meta:
+                base_name = Path(meta['image_name']).stem
+            else:
+                base_name = f"image_{count}"
+
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             start = time.time()
@@ -165,7 +172,7 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                 mask_dir = output_path / "masks"
                 mask_dir.mkdir(parents=True, exist_ok=True)
                 pred_out = lab.squeeze().astype(np.uint16)
-                tifffile.imwrite(mask_dir / f"pred_mask_{count}.tiff", pred_out)
+                tifffile.imwrite(mask_dir / f"{base_name}_mask.tiff", pred_out)
 
             if parser_args.save_ims:
                 from instanseg.utils.augmentations import Augmentations
@@ -176,8 +183,8 @@ def instanseg_inference(val_images, val_labels, model, postprocessing_fn, device
                     return save_image_with_label_overlay(img, gt, return_image=True, alpha=0.8,
                                                          label_boundary_mode="thick", label_colors=color)
 
-                show_images(overlay(display.numpy(), torch.tensor(lab)),
-                            save_str=output_path / str("images/" "overlay" + str(count)))
+                show_images(overlay(display.numpy(), torch.tensor(lab.squeeze())),
+                            save_str=output_path / f"images/{base_name}_overlay")
 
     print("Time spent in preprocessing", time_dict["preprocessing"], "Time spent in model:", time_dict["model"],
           "Time spent in postprocessing:", time_dict["postprocessing"])
@@ -354,6 +361,7 @@ if __name__ == "__main__":
 
     pred_masks, gt_masks, time_dict = instanseg_inference(val_images,
                                                           val_labels,
+                                                          val_meta,
                                                           model,
                                                           postprocessing_fn=get_labels,
                                                           device=device,
