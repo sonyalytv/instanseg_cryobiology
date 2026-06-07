@@ -59,7 +59,7 @@ def _to_3channel_float(img: np.ndarray) -> np.ndarray:
         img = np.stack([img, img, img], axis=-1)
     elif img.ndim == 3:
         if img.shape[0] in (1, 3, 4) and img.shape[0] < img.shape[-1]:
-            # Channel-first → channel-last
+            # Channel-first -> channel-last
             img = np.transpose(img, (1, 2, 0))
         if img.shape[-1] == 1:
             img = np.repeat(img, 3, axis=-1)
@@ -158,7 +158,7 @@ class CellTypeDataset(Dataset):
             print(f"[ERROR] Failed to read {path}: {e}. Returning black image.")
             img = np.zeros((self.long_side, self.long_side, 3), dtype=np.float32)
 
-        # HWC → CHW tensor
+        # HWC -> CHW tensor
         tensor = torch.from_numpy(img).permute(2, 0, 1)  # (3, H, W)
 
         # Apply augmentations

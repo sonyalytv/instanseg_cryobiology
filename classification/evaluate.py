@@ -29,7 +29,7 @@ import pandas as pd
 
 from classification.config import (
     CLASS_NAMES, NUM_CLASSES, DEFAULT_LONG_SIDE, DEFAULT_TILE_SIZE,
-    DEFAULT_VAL_SPLIT, DEFAULT_RANDOM_SEED, ENCODER_LAYERS,
+    DEFAULT_VAL_SPLIT, DEFAULT_TEST_SPLIT, DEFAULT_RANDOM_SEED, ENCODER_LAYERS,
 )
 from classification.dataset import CellTypeDataset, collect_image_paths
 from classification.augmentations import ValTransform, TTATransform
@@ -44,15 +44,16 @@ def parse_args():
                         help="Path to classifier checkpoint (.pth)")
     parser.add_argument("--output_path", type=str, default="./eval_results",
                         help="Where to save evaluation outputs")
-    parser.add_argument("--split", type=str, default="val",
-                        choices=["val", "all"],
-                        help="Evaluate on val split only or entire dataset")
+    parser.add_argument("--split", type=str, default="test",
+                        choices=["val", "test", "all"],
+                        help="Evaluate on val split, test split, or entire dataset")
     parser.add_argument("--tta", action="store_true", default=False,
                         help="Enable test-time augmentation (4x: original + rotations)")
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--long_side", type=int, default=DEFAULT_LONG_SIDE)
     parser.add_argument("--tile_size", type=int, default=DEFAULT_TILE_SIZE)
     parser.add_argument("--val_split", type=float, default=DEFAULT_VAL_SPLIT)
+    parser.add_argument("--test_split", type=float, default=DEFAULT_TEST_SPLIT)
     parser.add_argument("--seed", type=int, default=DEFAULT_RANDOM_SEED)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--device", type=str, default=None)
@@ -153,7 +154,7 @@ def main():
     output_path = Path(args.output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # ── Load model ───────────────────────────────────────────────────────
+    # Load model
     print(f"Loading checkpoint: {args.checkpoint}")
     model, ckpt = load_classifier_checkpoint(
         args.checkpoint, device=str(device), layers=ENCODER_LAYERS, freeze_blocks=0
@@ -161,26 +162,39 @@ def main():
     print(f"  Loaded from epoch {ckpt.get('epoch', '?')}, "
           f"best metric {ckpt.get('best_metric', '?')}")
 
-    # ── Collect data ─────────────────────────────────────────────────────
+    # Collect data
     all_paths, all_labels = collect_image_paths(args.data_path)
     if len(all_paths) == 0:
         print("[ERROR] No images found.")
         sys.exit(1)
 
-    # Use val split or entire dataset
-    if args.split == "val":
-        _, eval_paths, _, eval_labels = train_test_split(
-            all_paths, all_labels,
-            test_size=args.val_split,
-            stratify=all_labels,
-            random_state=args.seed,
-        )
-        print(f"\nEvaluating on validation split: {len(eval_paths)} images")
+    # Use split or entire dataset
+    if args.split in ["val", "test"]:
+        if args.test_split > 0:
+            train_val_paths, test_paths, train_val_labels, test_labels = train_test_split(
+                all_paths, all_labels, test_size=args.test_split, stratify=all_labels, random_state=args.seed
+            )
+        else:
+            train_val_paths, train_val_labels = all_paths, all_labels
+            test_paths, test_labels = [], []
+
+        if args.split == "test":
+            eval_paths, eval_labels = test_paths, test_labels
+            print(f"\nEvaluating on test split: {len(eval_paths)} images")
+        else:
+            relative_val_split = args.val_split / (1.0 - args.test_split) if args.test_split < 1 else args.val_split
+            _, eval_paths, _, eval_labels = train_test_split(
+                train_val_paths, train_val_labels,
+                test_size=relative_val_split,
+                stratify=train_val_labels,
+                random_state=args.seed,
+            )
+            print(f"\nEvaluating on validation split: {len(eval_paths)} images")
     else:
         eval_paths, eval_labels = all_paths, all_labels
         print(f"\nEvaluating on ALL data: {len(eval_paths)} images")
 
-    # ── Dataset ──────────────────────────────────────────────────────────
+    # Dataset
     transform = TTATransform(args.tile_size) if args.tta else ValTransform(args.tile_size)
     ds = CellTypeDataset(eval_paths, eval_labels, long_side=args.long_side, transform=transform)
     loader = DataLoader(
@@ -188,10 +202,10 @@ def main():
         num_workers=args.num_workers, collate_fn=_collate_fn,
     )
 
-    # ── Run evaluation ───────────────────────────────────────────────────
+    # Run evaluation
     preds, labels, probs = evaluate(model, loader, device, use_tta=args.tta)
 
-    # ── Metrics ──────────────────────────────────────────────────────────
+    # Metrics
     acc = accuracy_score(labels, preds)
     bal_acc = balanced_accuracy_score(labels, preds)
     report = classification_report(labels, preds, target_names=CLASS_NAMES, digits=4)
@@ -204,7 +218,7 @@ def main():
     print(f"\nClassification Report:\n{report}")
     print(f"Confusion Matrix:\n{cm}")
 
-    # ── Save outputs ─────────────────────────────────────────────────────
+    # Save outputs
     # Report
     report_dict = classification_report(
         labels, preds, target_names=CLASS_NAMES, digits=4, output_dict=True

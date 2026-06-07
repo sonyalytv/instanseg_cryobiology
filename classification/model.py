@@ -65,7 +65,7 @@ class CellTypeClassifier(nn.Module):
         # Build a fresh InstanSeg_UNet just for its encoder
         from instanseg.utils.models.InstanSeg_UNet import InstanSeg_UNet
 
-        # We need *some* out_channels to instantiate the UNet,
+        # We need some out_channels to instantiate the UNet,
         # but we won't use the decoder at all.
         dummy_out = [[1]]
         self._unet = InstanSeg_UNet(
@@ -108,7 +108,7 @@ class CellTypeClassifier(nn.Module):
         return self.head(x)
 
 
-# ── Checkpoint loading utilities ─────────────────────────────────────────
+# Checkpoint loading utilities
 
 def load_encoder_weights(
     model: CellTypeClassifier,

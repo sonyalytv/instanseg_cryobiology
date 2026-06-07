@@ -37,7 +37,7 @@ from classification.config import (
     CLASS_NAMES, NUM_CLASSES, IDX_TO_CLASS,
     DEFAULT_BATCH_SIZE, DEFAULT_NUM_EPOCHS, DEFAULT_LR, DEFAULT_LR_ENCODER,
     DEFAULT_WEIGHT_DECAY, DEFAULT_PATIENCE, DEFAULT_FREEZE_BLOCKS,
-    DEFAULT_NUM_WORKERS, DEFAULT_VAL_SPLIT, DEFAULT_RANDOM_SEED,
+    DEFAULT_NUM_WORKERS, DEFAULT_VAL_SPLIT, DEFAULT_TEST_SPLIT, DEFAULT_RANDOM_SEED,
     DEFAULT_LONG_SIDE, DEFAULT_TILE_SIZE, ENCODER_LAYERS,
 )
 from classification.dataset import CellTypeDataset, collect_image_paths
@@ -51,7 +51,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Train a cell-type classifier on top of InstanSeg encoder."
     )
-    # ── Paths (the only things that change between local and Kaggle) ─────
+    # Paths (the only things that change between local and Kaggle)
     parser.add_argument("--data_path", type=str, required=True,
                         help="Root folder containing class subfolders "
                              "(epithelial/, fibroblasts/, leukocytes/, neuroblasts/)")
@@ -61,7 +61,7 @@ def parse_args():
     parser.add_argument("--output_path", type=str, default="./classification_results",
                         help="Where to save model checkpoints, metrics, and plots.")
 
-    # ── Hyperparameters ──────────────────────────────────────────────────
+    # Hyperparameters
     parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--num_epochs", type=int, default=DEFAULT_NUM_EPOCHS)
     parser.add_argument("--lr", type=float, default=DEFAULT_LR)
@@ -72,6 +72,7 @@ def parse_args():
     parser.add_argument("--long_side", type=int, default=DEFAULT_LONG_SIDE)
     parser.add_argument("--tile_size", type=int, default=DEFAULT_TILE_SIZE)
     parser.add_argument("--val_split", type=float, default=DEFAULT_VAL_SPLIT)
+    parser.add_argument("--test_split", type=float, default=DEFAULT_TEST_SPLIT)
     parser.add_argument("--seed", type=int, default=DEFAULT_RANDOM_SEED)
     parser.add_argument("--num_workers", type=int, default=DEFAULT_NUM_WORKERS)
     parser.add_argument("--device", type=str, default=None,
@@ -195,31 +196,46 @@ def main():
     device = _choose_device(args.device)
     print(f"Using device: {device}")
 
-    # ── Output directory ─────────────────────────────────────────────────
+    # Output directory
     output_path = Path(args.output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # ── Collect data ─────────────────────────────────────────────────────
+    # Collect data
     print(f"\nCollecting images from: {args.data_path}")
     all_paths, all_labels = collect_image_paths(args.data_path)
     if len(all_paths) == 0:
         print("[ERROR] No images found. Check --data_path.")
         sys.exit(1)
 
-    # ── Stratified split ─────────────────────────────────────────────────
+    # Stratified split
+    if args.test_split > 0:
+        train_val_paths, test_paths, train_val_labels, test_labels = train_test_split(
+            all_paths, all_labels,
+            test_size=args.test_split,
+            stratify=all_labels,
+            random_state=args.seed,
+        )
+        test_df = pd.DataFrame({"path": test_paths, "label": test_labels})
+        test_df.to_csv(output_path / "test_split.csv", index=False)
+        print(f"Saved {len(test_paths)} test images to {output_path / 'test_split.csv'}")
+    else:
+        train_val_paths, train_val_labels = all_paths, all_labels
+        test_paths = []
+
+    relative_val_split = args.val_split / (1.0 - args.test_split) if args.test_split < 1 else args.val_split
     train_paths, val_paths, train_labels, val_labels = train_test_split(
-        all_paths, all_labels,
-        test_size=args.val_split,
-        stratify=all_labels,
+        train_val_paths, train_val_labels,
+        test_size=relative_val_split,
+        stratify=train_val_labels,
         random_state=args.seed,
     )
-    print(f"\nTrain: {len(train_paths)} | Val: {len(val_paths)}")
+    print(f"\nTrain: {len(train_paths)} | Val: {len(val_paths)} | Test: {len(test_paths)}")
 
-    # ── Class weights ────────────────────────────────────────────────────
+    # Class weights
     class_weights = _compute_class_weights(train_labels, NUM_CLASSES).to(device)
     print(f"Class weights: {dict(zip(CLASS_NAMES, class_weights.cpu().numpy().round(3)))}")
 
-    # ── Datasets & loaders ───────────────────────────────────────────────
+    # Datasets & loaders
     train_ds = CellTypeDataset(
         train_paths, train_labels,
         long_side=args.long_side,
@@ -249,7 +265,7 @@ def main():
         persistent_workers=args.num_workers > 0,
     )
 
-    # ── Model ────────────────────────────────────────────────────────────
+    # Model
     model = CellTypeClassifier(
         num_classes=NUM_CLASSES,
         layers=ENCODER_LAYERS,
@@ -267,7 +283,7 @@ def main():
     print(f"\nTotal parameters:     {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
 
-    # ── Optimizer with differential LR ───────────────────────────────────
+    # Optimizer with differential LR
     encoder_params = [p for n, p in model.named_parameters()
                       if p.requires_grad and n.startswith("encoder")]
     head_params = [p for n, p in model.named_parameters()
@@ -283,10 +299,10 @@ def main():
         optimizer, T_0=10, T_mult=2, eta_min=1e-6
     )
 
-    # ── Loss ─────────────────────────────────────────────────────────────
+    # Loss
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-    # ── Training loop ────────────────────────────────────────────────────
+    # Training loop
     best_val_acc = -1.0
     no_improvement = 0
     history = {"epoch": [], "train_loss": [], "train_acc": [],
@@ -342,11 +358,11 @@ def main():
                       f"without improvement (best val_acc={best_val_acc:.4f})")
                 break
 
-    # ── Save metrics ─────────────────────────────────────────────────────
+    # Save metrics
     df = pd.DataFrame(history)
     df.to_csv(output_path / "training_metrics.csv", index=False)
 
-    # ── Plot loss & accuracy curves ──────────────────────────────────────
+    # Plot loss & accuracy curves
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
     ax1.plot(history["epoch"], history["train_loss"], label="Train")
@@ -370,7 +386,7 @@ def main():
     plt.savefig(output_path / "training_curves.png", dpi=150)
     plt.close()
 
-    # ── Save args ────────────────────────────────────────────────────────
+    # Save args
     pd.DataFrame.from_dict(vars(args), orient="index").to_csv(
         output_path / "training_args.csv", header=False
     )

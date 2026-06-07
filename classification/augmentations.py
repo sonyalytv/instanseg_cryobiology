@@ -22,7 +22,7 @@ class TrainTransform:
     def __call__(self, img: torch.Tensor) -> torch.Tensor:
         _, h, w = img.shape
 
-        # ── Pad if smaller than crop size ────────────────────────────
+        # Pad if smaller than crop size
         pad_h = max(0, self.crop_size - h)
         pad_w = max(0, self.crop_size - w)
         if pad_h > 0 or pad_w > 0:
@@ -32,7 +32,7 @@ class TrainTransform:
                 mode="reflect",
             )
 
-        # ── Random crop ──────────────────────────────────────────────
+        # Random crop
         _, h, w = img.shape
         if h > self.crop_size or w > self.crop_size:
             i, j, th, tw = RandomCrop.get_params(
@@ -40,28 +40,28 @@ class TrainTransform:
             )
             img = img[:, i : i + th, j : j + tw]
 
-        # ── Random horizontal & vertical flips ───────────────────────
+        # Random horizontal & vertical flips
         if random.random() > 0.5:
             img = TF.hflip(img)
         if random.random() > 0.5:
             img = TF.vflip(img)
 
-        # ── Random 90° rotation ──────────────────────────────────────
+        # Random 90° rotation
         angle = random.choice([0, 90, 180, 270])
         if angle != 0:
             img = TF.rotate(img, angle)
 
-        # ── Brightness / contrast jitter ─────────────────────────────
+        # Brightness / contrast jitter
         if random.random() > 0.3:
             factor = 1.0 + (random.random() - 0.5) * 0.4  # [0.8, 1.2]
             img = torch.clamp(img * factor, 0.0, 1.0)
 
-        # ── Gaussian noise ───────────────────────────────────────────
+        # Gaussian noise
         if random.random() > 0.5:
             noise = torch.randn_like(img) * 0.02
             img = torch.clamp(img + noise, 0.0, 1.0)
 
-        # ── Percentile normalization (per-channel) ───────────────────
+        # Percentile normalization (per-channel)
         img = _percentile_normalize(img)
 
         return img
@@ -77,7 +77,7 @@ class ValTransform:
     def __call__(self, img: torch.Tensor) -> torch.Tensor:
         _, h, w = img.shape
 
-        # ── Pad if smaller than crop size ────────────────────────────
+        # Pad if smaller than crop size
         pad_h = max(0, self.crop_size - h)
         pad_w = max(0, self.crop_size - w)
         if pad_h > 0 or pad_w > 0:
@@ -87,12 +87,12 @@ class ValTransform:
                 mode="reflect",
             )
 
-        # ── Centre crop ──────────────────────────────────────────────
+        # Centre crop
         _, h, w = img.shape
         if h > self.crop_size or w > self.crop_size:
             img = TF.center_crop(img, [self.crop_size, self.crop_size])
 
-        # ── Percentile normalization ─────────────────────────────────
+        # Percentile normalization
         img = _percentile_normalize(img)
 
         return img
