@@ -179,3 +179,45 @@ An example entry looks like this:
   "license": "Apache-2.0"
 }
 ```
+
+## Cell Type Classification Pipeline
+
+This repository has been extended to include a **Cell Type Classification Pipeline**, which performs image-level, multi-class classification for whole images by attaching a custom classification head on top of InstanSeg's pre-trained shared encoder. 
+
+This pipeline enables transfer-learning on small/imbalanced datasets of light-microscopy imagery without modifying the original segmentation codebase. 
+
+### How to use the Classification Module
+
+All classification scripts reside in the `classification/` directory.
+
+#### 1. Train the classifier
+To train on a new dataset using your existing segmentation checkpoints:
+```bash
+python -m classification.train \
+    --data_path "/path/to/dataset/by_type" \
+    --checkpoint "/path/to/model_weights_best.pth" \
+    --output_path "./classification_results" \
+    --batch_size 16 \
+    --num_epochs 100 \
+    --device cuda
+```
+*Note: Ensure your dataset has class-named subfolders (e.g. `epithelial/`, `fibroblasts/`, `leukocytes/`, `neuroblasts/`).*
+
+#### 2. Evaluate the classifier
+To evaluate the validation set and generate metrics (accuracy, F1, precision, recall) and a confusion matrix plot:
+```bash
+python -m classification.evaluate \
+    --data_path "/path/to/dataset/by_type" \
+    --checkpoint "./classification_results/model_best.pth" \
+    --output_path "./eval_results" \
+    --split val \
+    --tta
+```
+
+#### 3. Run Inference
+To run inference on a single image or an entire folder:
+```bash
+python -m classification.predict \
+    --image "/path/to/folder_or_image" \
+    --checkpoint "./classification_results/model_best.pth"
+```

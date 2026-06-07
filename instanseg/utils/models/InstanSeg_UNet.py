@@ -148,6 +148,16 @@ class InstanSeg_UNet(nn.Module):
             
         self.decoders = nn.ModuleList([Decoder(layers,out_channel,norm, act) for out_channel in out_channels])
     
+    def encode(self, x):
+        """Extract encoder features without running the decoder.
+        Returns the bottleneck tensor and the list of skip connections."""
+        skips = []
+        for n, layer in enumerate(self.encoder):
+            x = layer(x)
+            if n < len(self.encoder) - 1:
+                skips.append(x)
+        return x, skips
+
     def forward(self,x):
         skips = []
         for n,layer in enumerate(self.encoder):
