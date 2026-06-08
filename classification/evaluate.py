@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -28,10 +29,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from classification.config import (
-    CLASS_NAMES, NUM_CLASSES, DEFAULT_LONG_SIDE, DEFAULT_TILE_SIZE,
+    CLASS_NAMES, NUM_CLASSES, IDX_TO_CLASS,
+    DEFAULT_LONG_SIDE, DEFAULT_TILE_SIZE,
     DEFAULT_VAL_SPLIT, DEFAULT_TEST_SPLIT, DEFAULT_RANDOM_SEED, ENCODER_LAYERS,
 )
-from classification.dataset import CellTypeDataset, collect_image_paths
+from classification.dataset import (
+    CellTypeDataset, collect_image_paths, _read_image, _to_3channel_float,
+    _resize_long_side,
+)
 from classification.augmentations import ValTransform, TTATransform
 from classification.model import load_classifier_checkpoint
 
@@ -57,6 +62,8 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=DEFAULT_RANDOM_SEED)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--num_vis", type=int, default=24,
+                        help="Number of sample images to show in the prediction grid")
     return parser.parse_args()
 
 
@@ -122,21 +129,109 @@ def _plot_confusion_matrix(cm, class_names, save_path):
     plt.close()
 
 
+def _plot_prediction_grid(eval_paths, eval_labels, preds, probs,
+                          long_side, num_vis, save_path):
+    """Create a grid of sample images with true/predicted labels.
+    Correct predictions get a green title, incorrect get red."""
+
+    n_total = len(eval_paths)
+    if n_total == 0:
+        return
+
+    # Select samples: mix of correct and incorrect
+    correct_mask = np.array(eval_labels) == np.array(preds)
+    incorrect_idxs = np.where(~correct_mask)[0]
+    correct_idxs = np.where(correct_mask)[0]
+
+    # Prioritise showing all misclassifications, fill rest with correct
+    np.random.seed(42)
+    selected = []
+    if len(incorrect_idxs) > 0:
+        n_wrong = min(len(incorrect_idxs), num_vis // 2)
+        selected.extend(np.random.choice(incorrect_idxs, n_wrong, replace=False).tolist())
+    remaining = num_vis - len(selected)
+    if remaining > 0 and len(correct_idxs) > 0:
+        n_right = min(len(correct_idxs), remaining)
+        selected.extend(np.random.choice(correct_idxs, n_right, replace=False).tolist())
+
+    if not selected:
+        return
+
+    ncols = min(4, len(selected))
+    nrows = (len(selected) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows))
+    if nrows == 1 and ncols == 1:
+        axes = np.array([axes])
+    axes = np.atleast_2d(axes)
+
+    for ax_idx, sample_idx in enumerate(selected):
+        row, col = divmod(ax_idx, ncols)
+        ax = axes[row, col]
+
+        # Load raw image for display
+        try:
+            img = _read_image(eval_paths[sample_idx])
+            img = _to_3channel_float(img)
+            img = _resize_long_side(img, long_side)
+        except Exception:
+            img = np.zeros((long_side, long_side, 3), dtype=np.float32)
+
+        ax.imshow(np.clip(img, 0, 1))
+        ax.axis("off")
+
+        true_name = IDX_TO_CLASS[eval_labels[sample_idx]]
+        pred_name = IDX_TO_CLASS[preds[sample_idx]]
+        conf = probs[sample_idx].max()
+        is_correct = eval_labels[sample_idx] == preds[sample_idx]
+
+        title_color = "#2e8b57" if is_correct else "#c0392b"
+        marker = "[OK]" if is_correct else "[X]"
+        ax.set_title(
+            f"{marker} True: {true_name}\nPred: {pred_name} ({conf:.2f})",
+            fontsize=9, fontweight="bold", color=title_color,
+        )
+
+    # Hide unused axes
+    for ax_idx in range(len(selected), nrows * ncols):
+        row, col = divmod(ax_idx, ncols)
+        axes[row, col].axis("off")
+
+    plt.suptitle("Prediction Samples (green=correct, red=incorrect)",
+                 fontsize=13, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Prediction grid saved to: {save_path}")
+
+
 @torch.no_grad()
 def evaluate(model, dataloader, device, use_tta=False):
+    """Run inference and return predictions, labels, probabilities, and timing."""
     model.eval()
     all_preds, all_labels, all_probs = [], [], []
+    total_images = 0
+
+    # Warm up GPU
+    if device.type == "cuda":
+        dummy = torch.randn(1, 3, 256, 256, device=device)
+        _ = model(dummy)
+        torch.cuda.synchronize()
+
+    t_start = time.time()
 
     for images, labels in dataloader:
+        batch_size = labels.shape[0]
         if use_tta:
-            # images: (B, K, C, H, W) where K=4 TTA variants
             B, K, C, H, W = images.shape
             images = images.view(B * K, C, H, W).to(device)
-            logits = model(images)                     # (B*K, num_classes)
-            logits = logits.view(B, K, -1).mean(dim=1) # (B, num_classes)
+            logits = model(images)
+            logits = logits.view(B, K, -1).mean(dim=1)
         else:
             images = images.to(device)
             logits = model(images)
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
 
         probs = torch.softmax(logits, dim=1)
         preds = logits.argmax(dim=1)
@@ -144,8 +239,17 @@ def evaluate(model, dataloader, device, use_tta=False):
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(labels.numpy())
         all_probs.extend(probs.cpu().numpy())
+        total_images += batch_size
 
-    return np.array(all_preds), np.array(all_labels), np.array(all_probs)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    t_end = time.time()
+
+    elapsed = t_end - t_start
+    avg_ms = (elapsed / total_images * 1000) if total_images > 0 else 0.0
+
+    return (np.array(all_preds), np.array(all_labels),
+            np.array(all_probs), elapsed, avg_ms)
 
 
 def main():
@@ -202,8 +306,10 @@ def main():
         num_workers=args.num_workers, collate_fn=_collate_fn,
     )
 
-    # Run evaluation
-    preds, labels, probs = evaluate(model, loader, device, use_tta=args.tta)
+    # Run evaluation with timing
+    preds, labels, probs, total_time, avg_ms = evaluate(
+        model, loader, device, use_tta=args.tta
+    )
 
     # Metrics
     acc = accuracy_score(labels, preds)
@@ -214,12 +320,14 @@ def main():
     print(f"\n{'='*60}")
     print(f"Overall accuracy:    {acc:.4f}")
     print(f"Balanced accuracy:   {bal_acc:.4f}")
+    print(f"Total inference time: {total_time:.2f}s")
+    print(f"Avg time per image:   {avg_ms:.2f} ms")
     print(f"{'='*60}")
     print(f"\nClassification Report:\n{report}")
     print(f"Confusion Matrix:\n{cm}")
 
     # Save outputs
-    # Report
+    # Classification report CSV
     report_dict = classification_report(
         labels, preds, target_names=CLASS_NAMES, digits=4, output_dict=True
     )
@@ -230,10 +338,20 @@ def main():
     # Confusion matrix plot
     _plot_confusion_matrix(cm, CLASS_NAMES, output_path / "confusion_matrix.png")
 
-    # Summary
+    # Prediction grid
+    _plot_prediction_grid(
+        eval_paths, eval_labels, preds, probs,
+        long_side=args.long_side,
+        num_vis=args.num_vis,
+        save_path=output_path / "prediction_samples.png",
+    )
+
+    # Summary (includes timing)
     summary = {
         "accuracy": acc,
         "balanced_accuracy": bal_acc,
+        "total_inference_time_s": total_time,
+        "avg_time_per_image_ms": avg_ms,
         "tta": args.tta,
         "num_samples": len(labels),
         "checkpoint": args.checkpoint,
