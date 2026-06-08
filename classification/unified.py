@@ -161,7 +161,7 @@ def load_unified_model(
     out_channels = []
     for d_idx in range(n_decoders):
         fb_keys = [k for k in seg_state.keys()
-                    if k.startswith(f"decoders.{d_idx}.final_block.") and "weight" in k and k.endswith(".weight")]
+                    if k.startswith(f"decoders.{d_idx}.final_block.") and k.endswith(".0.weight")]
         block_outs = []
         for fb_key in sorted(fb_keys):
             block_outs.append(seg_state[fb_key].shape[0])
