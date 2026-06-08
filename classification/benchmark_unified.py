@@ -317,14 +317,16 @@ def main():
 
     for idx in vis_indices:
         t_gpu = tensors[idx].to(device)
-        seg_out, cls_logits = model(t_gpu, run_seg=True, run_cls=True)
+        
+        with torch.no_grad():
+            seg_out, cls_logits = model(t_gpu, run_seg=True, run_cls=True)
 
-        # Process segmentation (run through InstanSeg postprocessing if available)
-        seg_cpu = seg_out.cpu() if seg_out is not None else None
+            # Process segmentation (run through InstanSeg postprocessing if available)
+            seg_cpu = seg_out.cpu() if seg_out is not None else None
 
-        # Process classification
-        probs = torch.softmax(cls_logits, dim=1).squeeze(0).cpu().numpy()
-        pred_idx = int(probs.argmax())
+            # Process classification
+            probs = torch.softmax(cls_logits, dim=1).squeeze(0).cpu().numpy()
+            pred_idx = int(probs.argmax())
 
         true_label = eval_labels[idx] if idx < len(eval_labels) else None
         true_class = IDX_TO_CLASS[true_label] if true_label is not None else None
